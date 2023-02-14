@@ -1,0 +1,17 @@
+{
+  "name": "bobril-test-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.ts",
+  "private": true,
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bobril": "*",
+    "be-resource-cache": "*",
+    "be-resource-cache-bobril": "*"
+  }
+}
