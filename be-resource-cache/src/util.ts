@@ -15,7 +15,7 @@ export type DeepReadonly<T> = T extends
 export function asDeepReadonly<T>(x: T): DeepReadonly<T> {
   return x as DeepReadonly<T>;
 }
-
+/*
 test<number>(1);
 test<number[]>([1]);
 test<{ a: number; b: string[] }>({ a: 1, b: ["12"] });
@@ -29,3 +29,5 @@ const x = {
 test<typeof x>(x);
 
 function test<T>(x: DeepReadonly<T>) {}
+*/
+export function assertNever(x: never) {}

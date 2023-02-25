@@ -25,7 +25,7 @@ function App() {
 }
 
 function DisplayValue(p: { id: number }) {
-  const value = useAsyncResource(fakeResource, p.id);
+  const value = useAsyncResource(fakeResource, p.id)?.data;
   return (
     <div>
       Value: {value ?? "(no value yet)"}, <RenderCounter />

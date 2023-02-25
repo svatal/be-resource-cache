@@ -7,8 +7,8 @@ export function useAsyncResource<TKey, TData>(
 ) {
   useEffect(() => {
     const ctx = getCurrentCtx();
-    const subId = cache.subscribe(key, () => invalidate(ctx));
-    return () => cache.unsubscribe(subId);
+    const { unsubscribe } = cache.subscribe(key, () => invalidate(ctx));
+    return unsubscribe;
   }, [cache.getSerializedKey(key)]);
   return cache.get(key);
 }

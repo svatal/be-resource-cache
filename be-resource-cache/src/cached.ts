@@ -1,56 +1,89 @@
 import {
+  AsyncResourceState,
+  CachedAsyncResourceResult,
+  fetching,
   IAsyncResource,
   ICachedAsyncResource,
-  SubscriptionId,
 } from "./asyncResource";
-import { asDeepReadonly, DeepReadonly } from "./util";
+import { asDeepReadonly, assertNever, DeepReadonly } from "./util";
 
+// TODO: caching strategy
 export function cached<TKey, TData>(
-  resource: IAsyncResource<TKey, TData>
+  resource: IAsyncResource<TKey, TData>,
+  getSerializedKey: (key: TKey) => string
 ): ICachedAsyncResource<TKey, DeepReadonly<TData>> {
-  const cache = new Map<string, DeepReadonly<TData>>();
-  const subscribes = new Map<
+  let nextSubscriptionId = 1;
+  const cache = new Map<
     string,
     {
-      sId: SubscriptionId<TKey>;
-      cbs: Map<number, (cb: DeepReadonly<TData>) => void>;
+      unsubscribe: () => void;
+      result: CachedAsyncResourceResult<DeepReadonly<TData>> | undefined;
+      cbs: Map<
+        number,
+        (cb: CachedAsyncResourceResult<DeepReadonly<TData>>) => void
+      >;
     }
   >();
   return {
     subscribe(key, onData) {
-      const serializedKey = resource.getSerializedKey(key);
-      let s = subscribes.get(serializedKey);
+      const serializedKey = getSerializedKey(key);
+      let s = cache.get(serializedKey);
       if (!s) {
-        const parentSubscriptionId = resource.subscribe(key, (data) => {
-          const roData = asDeepReadonly(data);
-          cache.set(serializedKey, roData);
-          subscribes.get(serializedKey)?.cbs.forEach((cb) => cb(roData));
+        const { unsubscribe } = resource.subscribe(key, (result) => {
+          const subscribed = cache.get(serializedKey);
+          if (!subscribed)
+            throw "onChange callback called after the subscription ended!";
+          switch (result.state) {
+            case AsyncResourceState.fetched: {
+              subscribed.result = {
+                state: result.state,
+                data: asDeepReadonly(result.data),
+              };
+              break;
+            }
+            case AsyncResourceState.fetching:
+            case AsyncResourceState.error: {
+              subscribed.result = result;
+              break;
+            }
+            case AsyncResourceState.invalidated: {
+              subscribed.result =
+                subscribed.result?.data !== undefined
+                  ? { state: result.state, data: subscribed.result.data }
+                  : fetching;
+              break;
+            }
+            default:
+              assertNever(result);
+          }
+          subscribed.cbs.forEach((cb) => cb(subscribed.result!));
         });
         s = {
-          sId: parentSubscriptionId,
+          unsubscribe,
+          result: undefined,
           cbs: new Map(),
         };
-        subscribes.set(serializedKey, s);
+        cache.set(serializedKey, s);
       }
-      const subscriptionId = new SubscriptionId(key);
-      s.cbs.set(subscriptionId.id, onData);
-      return subscriptionId;
-    },
-    unsubscribe(subscriptionId) {
-      const serializedKey = resource.getSerializedKey(subscriptionId.key);
-      let s = subscribes.get(serializedKey);
-      if (!s) return;
-      s.cbs.delete(subscriptionId.id);
-      if (s.cbs.size > 0) return;
-      subscribes.delete(serializedKey);
-      resource.unsubscribe(s.sId);
+      const subscriptionId = nextSubscriptionId++;
+      s.cbs.set(subscriptionId, onData);
+      return {
+        unsubscribe: () => {
+          let s = cache.get(serializedKey);
+          if (!s) return;
+          s.cbs.delete(subscriptionId);
+          if (s.cbs.size > 0) return;
+          s.unsubscribe();
+          cache.delete(serializedKey);
+        },
+      };
     },
     getSerializedKey(key) {
-      return resource.getSerializedKey(key);
+      return getSerializedKey(key);
     },
     get(key) {
-      const serializedKey = resource.getSerializedKey(key);
-      return cache.get(serializedKey);
+      const serializedKey = getSerializedKey(key);
+      return cache.get(serializedKey)?.result;
     },
   };
 }
