@@ -7,10 +7,34 @@ import {
 } from "./asyncResource";
 import { asDeepReadonly, assertNever, DeepReadonly } from "./util";
 
-// TODO: caching strategy
+interface ICachingStrategy {
+  onLastUnsubscribe(endSubscription: () => void): void;
+  onChangeWithoutSubscribers(endSubscription: () => void): void;
+}
+
+export const deleteASAP: ICachingStrategy = {
+  onLastUnsubscribe: (endSubscription) => {
+    endSubscription();
+  },
+  onChangeWithoutSubscribers: () => {},
+};
+
+export const keepUntilChanged: ICachingStrategy = {
+  onLastUnsubscribe: () => {},
+  onChangeWithoutSubscribers: (endSubscription) => {
+    endSubscription();
+  },
+};
+
+export const keepWatchingForever: ICachingStrategy = {
+  onLastUnsubscribe: () => {},
+  onChangeWithoutSubscribers: () => {},
+};
+
 export function cached<TKey, TData>(
   resource: IAsyncResource<TKey, TData>,
-  getSerializedKey: (key: TKey) => string
+  getSerializedKey: (key: TKey) => string,
+  cachingStrategy: ICachingStrategy
 ): ICachedAsyncResource<TKey, DeepReadonly<TData>> {
   let nextSubscriptionId = 1;
   const cache = new Map<
@@ -57,6 +81,9 @@ export function cached<TKey, TData>(
               assertNever(result);
           }
           subscribed.cbs.forEach((cb) => cb(subscribed.result!));
+          if (subscribed.cbs.size === 0) {
+            cachingStrategy.onChangeWithoutSubscribers(endSubscription);
+          }
         });
         s = {
           unsubscribe,
@@ -64,6 +91,11 @@ export function cached<TKey, TData>(
           cbs: new Map(),
         };
         cache.set(serializedKey, s);
+      }
+      function endSubscription() {
+        if (!s) throw new Error("Cannot unsubscribe during subscribe!");
+        s.unsubscribe();
+        cache.delete(serializedKey);
       }
       const subscriptionId = nextSubscriptionId++;
       s.cbs.set(subscriptionId, onData);
@@ -73,8 +105,7 @@ export function cached<TKey, TData>(
           if (!s) return;
           s.cbs.delete(subscriptionId);
           if (s.cbs.size > 0) return;
-          s.unsubscribe();
-          cache.delete(serializedKey);
+          cachingStrategy.onLastUnsubscribe(endSubscription);
         },
       };
     },

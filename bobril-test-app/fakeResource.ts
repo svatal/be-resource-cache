@@ -1,4 +1,4 @@
-import { cached } from "be-resource-cache";
+import { cached, deleteASAP } from "be-resource-cache";
 
 export const fakeResource = cached<number, number>(
   {
@@ -14,5 +14,6 @@ export const fakeResource = cached<number, number>(
       };
     },
   },
-  (key) => `${key}`
+  (key) => `${key}`,
+  deleteASAP
 );
